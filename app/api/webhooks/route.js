@@ -1,104 +1,88 @@
-import { Webhook } from "svix";
-import { headers } from "next/headers";
-import { WebhookEvent } from "@clerk/nextjs/server";
-import { createOrUpdateUser, deleteUser } from "@/lib/actions/user";
+import { Webhook } from 'svix'
+import { headers } from 'next/headers'
+import { createOrUpdateUser, deleteUser } from '@/lib/actions/user'
 
 export async function POST(req) {
-  const SIGNING_SECRET = process.env.SIGNING_SECRET;
+  const SIGNING_SECRET = process.env.SIGNING_SECRET
+
   if (!SIGNING_SECRET) {
-    console.error("Error: SIGNING_SECRET is missing from environment variables.");
-    return new Response("Error: Missing SIGNING_SECRET", { status: 500 });
+    throw new Error('Error: Please add SIGNING_SECRET from Clerk Dashboard to .env or .env')
   }
 
-  // Initialize Svix Webhook instance
-  const wh = new Webhook(SIGNING_SECRET);
+  // Create new Svix instance with secret
+  const wh = new Webhook(SIGNING_SECRET)
 
-  // Retrieve headers safely
-  const headerPayload = headers();
-  const svix_id = headerPayload.get("svix-id");
-  const svix_timestamp = headerPayload.get("svix-timestamp");
-  const svix_signature = headerPayload.get("svix-signature");
+  // Get headers
+  const headerPayload = await headers()
+  const svix_id = headerPayload.get('svix-id')
+  const svix_timestamp = headerPayload.get('svix-timestamp')
+  const svix_signature = headerPayload.get('svix-signature')
 
+  // If there are no headers, error out
   if (!svix_id || !svix_timestamp || !svix_signature) {
-    console.error("Error: Missing Svix headers");
-    return new Response("Error: Missing Svix headers", { status: 400 });
+    return new Response('Error: Missing Svix headers', {
+      status: 400,
+    })
   }
 
+  // Get body
+  const payload = await req.json()
+  const body = JSON.stringify(payload)
+
+  let evt;
+
+  // Verify payload with headers
   try {
-    // Parse and verify request body
-    const body = await req.text(); // Use raw body instead of JSON
-    const evt = wh.verify(body, {
-      "svix-id": svix_id,
-      "svix-timestamp": svix_timestamp,
-      "svix-signature": svix_signature,
-    });
-
-    const eventType = evt.type;
-    console.log(`Received webhook with event type: ${eventType}`);
-    console.log("Webhook payload:", JSON.stringify(evt.data, null, 2));
-
-    if (eventType === "user.created" || eventType === "user.updated") {
-      const { id, first_name, last_name, image_url, email_addresses, username } = evt?.data;
-      try {
-        await createOrUpdateUser(id, first_name, last_name, image_url, email_addresses, username);
-        return new Response("User is created or updated", { status: 200 });
-      } catch (err) {
-        console.error("Error creating or updating user:", err);
-        return new Response("Error occurred", { status: 500 });
-      }
-    }
-
-    if (eventType === "user.deleted") {
-      try {
-        const { id } = evt?.data;
-        await deleteUser(id);
-        return new Response("User is deleted", { status: 200 });
-      } catch (err) {
-        console.error("Error deleting user:", err);
-        return new Response("Error occurred", { status: 500 });
-      }
-    }
-  } catch (error) {
-    console.error("Error processing webhook:", error);
-    return new Response("Error processing webhook", { status: 400 });
+    evt = wh.verify(body, {
+      'svix-id': svix_id,
+      'svix-timestamp': svix_timestamp,
+      'svix-signature': svix_signature,
+    })
+  } catch (err) {
+    console.error('Error: Could not verify webhook:', err)
+    return new Response('Error: Verification error', {
+      status: 400,
+    })
   }
+
+  // Do something with payload
+  // For this guide, log payload to console
+  const { id } = evt.data
+  const eventType = evt.type
+  console.log(`Received webhook with ID ${id} and event type of ${eventType}`)
+  console.log('Webhook payload:', body)
+
+  if(eventType === 'user.created' || eventType === 'user.updated'){
+    const { id, first_name, last_name, image_url, email_addresses, username} = evt?.data;
+    try{
+      await createOrUpdateUser(
+        id,
+        first_name,
+        last_name,
+        image_url,
+        email_addresses,
+        username
+      )
+      return new Response('User is created or updated', {
+        status:200
+      })
+    } catch(error){
+      console.log('Error creating or updating user: ' , error)
+      return new Response('Error occured', {status:400})
+    }
+  }
+
+  if(eventType === 'user.deleted'){
+    try{
+      await deleteUser(id);
+      return new Response('User is deleted', {
+        status:200,
+      })
+    }catch(error){
+      console.log('Error deleting user:' , error);
+      return new Response('Error occured', {status:400})
+    }
+  }
+
+  return new Response('Webhook received', { status: 200 })
 }
-
-import User from "../models/User";
-import { connectToDB } from "../mongodb/mongoose";
-
-export const createOrUpdateUser = async (id, first_name, last_name, image_url, email_addresses, username) => {
-  try {
-    await connectToDB();
-
-    const user = await User.findOneAndUpdate(
-      { clerkId: id },
-      {
-        $set: {
-          firstName: first_name,
-          lastName: last_name,
-          profilePhoto: image_url,
-          email: email_addresses[0]?.email_address || "", // Ensure email extraction is safe
-          username: username,
-        },
-      },
-      { upsert: true, new: true }
-    );
-
-    return user;
-  } catch (error) {
-    console.error("Error in createOrUpdateUser:", error);
-    throw error; // Ensure errors are properly caught in the calling function
-  }
-};
-
-export const deleteUser = async (id) => {
-  try {
-    await connectToDB();
-    console.log(`Deleting user with ID: ${id}`);
-    await User.findOneAndDelete({ clerkId: id });
-  } catch (error) {
-    console.error("Error in deleteUser:", error);
-    throw error;
-  }
-};
