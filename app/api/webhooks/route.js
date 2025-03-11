@@ -7,33 +7,26 @@ export async function POST(req) {
   const SIGNING_SECRET = process.env.SIGNING_SECRET;
 
   if (!SIGNING_SECRET) {
-    throw new Error(
-      "Error: Please add SIGNING_SECRET from Clerk Dashboard to .env file"
-    );
+    throw new Error("Error: Please add SIGNING_SECRET from Clerk Dashboard to .env file");
   }
 
   // Create new Svix instance with secret
   const wh = new Webhook(SIGNING_SECRET);
 
-  // Get headers (no need to await)
+  // Get headers
   const headerPayload = headers();
   const svix_id = headerPayload.get("svix-id");
   const svix_timestamp = headerPayload.get("svix-timestamp");
   const svix_signature = headerPayload.get("svix-signature");
 
-  // If there are no headers, return error
   if (!svix_id || !svix_timestamp || !svix_signature) {
-    return new Response("Error: Missing Svix headers", {
-      status: 400,
-    });
+    return new Response("Error: Missing Svix headers", { status: 400 });
   }
 
   try {
-    // Get request body
+    // Get and verify payload
     const payload = await req.json();
     const body = JSON.stringify(payload);
-
-    // Verify webhook payload
     const evt = wh.verify(body, {
       "svix-id": svix_id,
       "svix-timestamp": svix_timestamp,
@@ -45,25 +38,17 @@ export async function POST(req) {
     console.log("Webhook payload:", body);
 
     if (eventType === "user.created" || eventType === "user.updated") {
-      const { id, first_name, last_name, image_url, email_addresses, username } =
-        evt.data;
+      const { id, first_name, last_name, image_url, email_addresses, username } = evt.data;
+      
+      // Extract primary email safely
+      const email = email_addresses?.[0]?.email_address || "no-email@example.com";
 
       try {
-        await createOrUpdateUser(
-          id,
-          first_name,
-          last_name,
-          image_url,
-          email_addresses,
-          username
-        );
-
+        await createOrUpdateUser(id, first_name, last_name, image_url, email, username);
         return new Response("User is created or updated", { status: 200 });
       } catch (err) {
         console.error("Error creating/updating user:", err);
-        return new Response("Error occurred while updating user", {
-          status: 500,
-        });
+        return new Response("Error occurred while updating user", { status: 500 });
       }
     }
 
@@ -71,13 +56,10 @@ export async function POST(req) {
       try {
         const { id } = evt.data;
         await deleteUser(id);
-
         return new Response("User is deleted", { status: 200 });
       } catch (err) {
         console.error("Error deleting user:", err);
-        return new Response("Error occurred while deleting user", {
-          status: 500,
-        });
+        return new Response("Error occurred while deleting user", { status: 500 });
       }
     }
 
