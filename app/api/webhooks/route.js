@@ -19,13 +19,19 @@ export async function POST(req) {
   const headerPayload = await headers();
   const svix_id = headerPayload.get("svix-id");
   const svix_timestamp = headerPayload.get("svix-timestamp");
-  const svix_signature = headerPayload.get("svix-signature");
+  let svix_signature = headerPayload.get("svix-signature");
 
   // If there are no headers, error out
   if (!svix_id || !svix_timestamp || !svix_signature) {
     return new Response("Error: Missing Svix headers", {
       status: 400,
     });
+  }
+
+  // Add padding to the signature if necessary
+  if (svix_signature && svix_signature.length % 4 !== 0) {
+    const padding = "=".repeat(4 - (svix_signature.length % 4));
+    svix_signature += padding;
   }
 
   // Get body
@@ -49,7 +55,6 @@ export async function POST(req) {
   }
 
   // Do something with payload
-  // For this guide, log payload to console
   const { id } = evt?.data;
   const eventType = evt?.type;
   console.log(`Received webhook with ID ${id} and event type of ${eventType}`);
@@ -58,30 +63,37 @@ export async function POST(req) {
   if (eventType === "user.created" || eventType === "user.updated") {
     const { id, first_name, last_name, image_url, email_addresses, username } =
       evt?.data;
-      try{
-        await createOrUpdateUser(id, first_name, last_name, image_url, email_addresses, username)
-        return new Response('User is created or updated', {
-            status:200
-        })
-      }catch(err){
-        console.error('Error creating or updating user: ', err);
-        return new Response('Error occured', {
-            status:500
-        })
-      }
-  }
-  if(eventType === 'user.deleted') {
-    try{
-        await deleteUser(id);
-        return new Response('User is deleted', {
-            status: 200
-        });
-    }catch(err){
-        console.error('Error deleting user: ', err);
-        return new Response('Error occored', {
-            status:500
-        })
+    try {
+      await createOrUpdateUser(
+        id,
+        first_name,
+        last_name,
+        image_url,
+        email_addresses,
+        username
+      );
+      return new Response("User is created or updated", {
+        status: 200,
+      });
+    } catch (err) {
+      console.error("Error creating or updating user: ", err);
+      return new Response("Error occurred", {
+        status: 500,
+      });
     }
   }
 
+  if (eventType === "user.deleted") {
+    try {
+      await deleteUser(id);
+      return new Response("User is deleted", {
+        status: 200,
+      });
+    } catch (err) {
+      console.error("Error deleting user: ", err);
+      return new Response("Error occurred", {
+        status: 500,
+      });
+    }
+  }
 }
