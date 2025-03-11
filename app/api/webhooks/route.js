@@ -38,35 +38,67 @@ export async function POST(req) {
     console.log("Webhook payload:", JSON.stringify(evt.data, null, 2));
 
     if (eventType === "user.created" || eventType === "user.updated") {
-      const { id, first_name, last_name, image_url, email_addresses, username } = evt.data;
-      const email = email_addresses?.[0]?.email_address || "no-email@example.com"; // Extract email safely
-
+      const { id, first_name, last_name, image_url, email_addresses, username } = evt?.data;
       try {
-        await createOrUpdateUser(id, first_name, last_name, image_url, email, username);
-        console.log("User successfully created or updated.");
+        await createOrUpdateUser(id, first_name, last_name, image_url, email_addresses, username);
         return new Response("User is created or updated", { status: 200 });
       } catch (err) {
-        console.error("Error creating/updating user:", err);
-        return new Response("Error occurred while updating user", { status: 500 });
+        console.error("Error creating or updating user:", err);
+        return new Response("Error occurred", { status: 500 });
       }
     }
 
     if (eventType === "user.deleted") {
       try {
-        const { id } = evt.data;
+        const { id } = evt?.data;
         await deleteUser(id);
-        console.log("User successfully deleted.");
         return new Response("User is deleted", { status: 200 });
       } catch (err) {
         console.error("Error deleting user:", err);
-        return new Response("Error occurred while deleting user", { status: 500 });
+        return new Response("Error occurred", { status: 500 });
       }
     }
-
-    console.log("Unhandled event type:", eventType);
-    return new Response("Event not handled", { status: 200 });
-  } catch (err) {
-    console.error("Error verifying webhook:", err);
-    return new Response("Verification error", { status: 400 });
+  } catch (error) {
+    console.error("Error processing webhook:", error);
+    return new Response("Error processing webhook", { status: 400 });
   }
 }
+
+import User from "../models/User";
+import { connectToDB } from "../mongodb/mongoose";
+
+export const createOrUpdateUser = async (id, first_name, last_name, image_url, email_addresses, username) => {
+  try {
+    await connectToDB();
+
+    const user = await User.findOneAndUpdate(
+      { clerkId: id },
+      {
+        $set: {
+          firstName: first_name,
+          lastName: last_name,
+          profilePhoto: image_url,
+          email: email_addresses[0]?.email_address || "", // Ensure email extraction is safe
+          username: username,
+        },
+      },
+      { upsert: true, new: true }
+    );
+
+    return user;
+  } catch (error) {
+    console.error("Error in createOrUpdateUser:", error);
+    throw error; // Ensure errors are properly caught in the calling function
+  }
+};
+
+export const deleteUser = async (id) => {
+  try {
+    await connectToDB();
+    console.log(`Deleting user with ID: ${id}`);
+    await User.findOneAndDelete({ clerkId: id });
+  } catch (error) {
+    console.error("Error in deleteUser:", error);
+    throw error;
+  }
+};
