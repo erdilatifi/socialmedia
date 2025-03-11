@@ -1,94 +1,89 @@
 import { Webhook } from "svix";
 import { headers } from "next/headers";
+import { WebhookEvent } from "@clerk/nextjs/server";
 import { createOrUpdateUser, deleteUser } from "@/lib/actions/user";
 
 export async function POST(req) {
-  // You can find this in the Clerk Dashboard -> Webhooks -> choose the webhook
-  const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
+  const SIGNING_SECRET = process.env.SIGNING_SECRET;
 
-  if (!WEBHOOK_SECRET) {
+  if (!SIGNING_SECRET) {
     throw new Error(
-      "Please add WEBHOOK_SECRET from Clerk Dashboard to .env or .env.local"
+      "Error: Please add SIGNING_SECRET from Clerk Dashboard to .env file"
     );
   }
 
-  // Get the headers
+  // Create new Svix instance with secret
+  const wh = new Webhook(SIGNING_SECRET);
+
+  // Get headers (no need to await)
   const headerPayload = headers();
   const svix_id = headerPayload.get("svix-id");
   const svix_timestamp = headerPayload.get("svix-timestamp");
   const svix_signature = headerPayload.get("svix-signature");
 
-  // If there are no headers, error out
+  // If there are no headers, return error
   if (!svix_id || !svix_timestamp || !svix_signature) {
-    return new Response("Error occured -- no svix headers", {
+    return new Response("Error: Missing Svix headers", {
       status: 400,
     });
   }
 
-  // Get the body
-  const payload = await req.json();
-  const body = JSON.stringify(payload);
-
-  // Create a new Svix instance with your secret.
-  const wh = new Webhook(WEBHOOK_SECRET);
-
-  let evt;
-
-  // Verify the payload with the headers
   try {
-    evt = wh.verify(body, {
+    // Get request body
+    const payload = await req.json();
+    const body = JSON.stringify(payload);
+
+    // Verify webhook payload
+    const evt = wh.verify(body, {
       "svix-id": svix_id,
       "svix-timestamp": svix_timestamp,
       "svix-signature": svix_signature,
     });
+
+    const eventType = evt.type;
+    console.log(`Received webhook with event type: ${eventType}`);
+    console.log("Webhook payload:", body);
+
+    if (eventType === "user.created" || eventType === "user.updated") {
+      const { id, first_name, last_name, image_url, email_addresses, username } =
+        evt.data;
+
+      try {
+        await createOrUpdateUser(
+          id,
+          first_name,
+          last_name,
+          image_url,
+          email_addresses,
+          username
+        );
+
+        return new Response("User is created or updated", { status: 200 });
+      } catch (err) {
+        console.error("Error creating/updating user:", err);
+        return new Response("Error occurred while updating user", {
+          status: 500,
+        });
+      }
+    }
+
+    if (eventType === "user.deleted") {
+      try {
+        const { id } = evt.data;
+        await deleteUser(id);
+
+        return new Response("User is deleted", { status: 200 });
+      } catch (err) {
+        console.error("Error deleting user:", err);
+        return new Response("Error occurred while deleting user", {
+          status: 500,
+        });
+      }
+    }
+
+    return new Response("Event not handled", { status: 200 });
   } catch (err) {
     console.error("Error verifying webhook:", err);
-    return new Response("Error occured", {
-      status: 400,
-    });
-  }
-
-  // Handle the event
-  const eventType = evt?.type;
-
-  if (eventType === "user.created" || eventType === "user.updated") {
-    const { id, first_name, last_name, image_url, email_addresses, username } =
-      evt?.data;
-
-    try {
-      await createOrUpdateUser(
-        id,
-        first_name,
-        last_name,
-        image_url,
-        email_addresses,
-        username
-      );
-
-      return new Response("User is created or updated", {
-        status: 200,
-      });
-    } catch (err) {
-      console.error("Error creating or updating user:", err);
-      return new Response("Error occured", {
-        status: 500,
-      });
-    }
-  }
-
-  if (eventType === "user.deleted") {
-    try {
-      const { id } = evt?.data;
-      await deleteUser(id);
-
-      return new Response("User is deleted", {
-        status: 200,
-      });
-    } catch (err) {
-      console.error("Error deleting user:", err);
-      return new Response("Error occured", {
-        status: 500,
-      });
-    }
+    return new Response("Verification error", { status: 400 });
   }
 }
