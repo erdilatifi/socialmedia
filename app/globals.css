@@ -1,26 +1,62 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* Clerk Auth forms */
+.cl-formButtonPrimary {
+  @apply bg-[#7857FF];
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+.cl-formButtonPrimary:hover {
+  @apply bg-[#FF0073];
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+.cl-footerActionLink {
+  @apply text-[#7857FF];
+}
+
+.cl-footerActionLink:hover {
+  @apply text-[#FF0073];
+}
+
+@layer utilities {
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 3px;
+    height: 3px;
+    border-radius: 2px;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Profile Info */
+.input {
+  @apply bg-[#121212] p-2.5 rounded-lg border-none focus:outline-none mt-3 text-[#FFFFFF];
 }
+
+/* Top Bar */
+.search-bar {
+  @apply w-full bg-[#34303E] py-3 px-5 rounded-lg focus:outline-none text-[#FFFFFF] text-[14px] font-semibold leading-[140%];
+}
+
+.create-post-btn {
+  @apply flex items-center gap-2 rounded-lg py-2.5 px-3 bg-gradient-to-l from-[#FF0073] to-[#7857FF] text-[#FFFFFF] text-[14px] font-medium leading-[140%] max-md:hidden;
+}
+
+.search-icon {
+  @apply absolute top-2 right-2 text-[#FFFFFF] cursor-pointer hover:text-[#FF0073];
+}
+
+/* Tabs */
+.tab {
+  @apply px-4 py-2 rounded-lg text-[#FFFFFF];
+}
+
+/*     
+      colors: {
+        "purple-1": "#7857FF",
+        "purple-2": "#1D1928",
+        "pink-1": "#FF0073",
+        "light-1": "#FFFFFF",
+        "light-2": "#808080",
+        "light-3": "#626067",
+        "dark-1": "#121212",
+        "dark-2": "#34303E",
+        "blue-1": "#016FD5",
+      } */
